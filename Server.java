@@ -1,88 +1,38 @@
 package computerNetwork;
 
-import java.io.*;
-import java.net.*;
-import java.util.concurrent.*;
-import java.util.StringTokenizer;
+import java.io.IOException;
+import java.net.ServerSocket;
+import java.net.Socket;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
+/**
+ * 메인 서버 클래스.
+ * 스레드 풀을 사용하여 다중 클라이언트 요청을 동시에 처리합니다.
+ */
 public class Server {
- private static final int PORT = 1234;
+    // Config에 정의된 기본 포트를 사용합니다. (파일이 없을 경우)
+    private static final int PORT = 1234; 
+    private static final int THREAD_POOL_SIZE = 5; // 동시 처리 가능한 최대 클라이언트 수
 
- public static void main(String[] args) {
-     ExecutorService pool = Executors.newFixedThreadPool(5);
-     System.out.println("Server started on port " + PORT);
+    public static void main(String[] args) {
+        // 스레드 풀 생성 (5개 고정 크기)
+        ExecutorService pool = Executors.newFixedThreadPool(THREAD_POOL_SIZE);
+        System.out.println("----------------------------------------");
+        System.out.println("Calculator Server started.");
+        System.out.println("Listening on port " + PORT + " with a thread pool size of " + THREAD_POOL_SIZE);
+        System.out.println("----------------------------------------");
 
-     try (ServerSocket serverSocket = new ServerSocket(PORT)) {
-         while (true) {
-             Socket clientSocket = serverSocket.accept();
-             pool.execute(new ClientHandler(clientSocket));
-         }
-     } catch (IOException e) {
-         e.printStackTrace();
-     }
- }
-}
-
-class ClientHandler implements Runnable {
- private Socket socket;
-
- public ClientHandler(Socket socket) {
-     this.socket = socket;
- }
-
- @Override
- public void run() {
-     try (
-         BufferedReader in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
-         BufferedWriter out = new BufferedWriter(new OutputStreamWriter(socket.getOutputStream()));
-     ) {
-         String line;
-         while ((line = in.readLine()) != null) {
-             String response = processRequest(line);
-             out.write(response + "\n");
-             out.flush();
-         }
-     } catch (IOException e) {
-         System.out.println("Client disconnected");
-     }
- }
-
- private String processRequest(String msg) {
-     try {
-         StringTokenizer st = new StringTokenizer(msg);
-         String command = st.nextToken().toUpperCase();
-         double a = Double.parseDouble(st.nextToken());
-         double b = Double.parseDouble(st.nextToken());
-         double result;
-
-         switch (command) {
-             case "ADD": result = a + b; break;
-             case "SUB": result = a - b; break;
-             case "MUL": result = a * b; break;
-             case "DIV":
-                 if (b == 0) return buildError("DIV_ZERO", "Cannot divide by zero");
-                 result = a / b;
-                 break;
-             default:
-                 return buildError("UNKNOWN_CMD", "Unsupported command");
-         }
-         return buildResult(result);
-
-     } catch (NumberFormatException e) {
-         return buildError("INVALID_ARG", "Non-numeric operand");
-     } catch (Exception e) {
-         return buildError("FORMAT_ERR", "Incorrect format");
-     }
- }
-
- private String buildResult(double value) {
-     return Protocol.RES_TYPE + ": " + Protocol.TYPE_RESULT + "\n" +
-            Protocol.VALUE + ": " + value;
- }
-
- private String buildError(String code, String msg) {
-     return Protocol.RES_TYPE + ": " + Protocol.TYPE_ERROR + "\n" +
-            Protocol.ERROR_CODE + ": " + code + "\n" +
-            Protocol.MESSAGE + ": " + msg;
- }
+        try (ServerSocket serverSocket = new ServerSocket(PORT)) {
+            while (true) {
+                // 클라이언트 연결 대기
+                Socket clientSocket = serverSocket.accept();
+                // 연결이 수락되면, 클라이언트 핸들러(Runnable)를 스레드 풀에 할당하여 실행
+                pool.execute(new ClientHandler(clientSocket));
+            }
+        } catch (IOException e) {
+            System.err.println("메인 서버 소켓 오류: " + e.getMessage());
+            pool.shutdown(); // 서버 오류 시 풀 종료
+        }
+    }
 }
